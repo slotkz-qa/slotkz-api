@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SlotKZ test client</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    fieldset { margin-bottom: 1rem; }
+    label { margin-right: .75rem; }
+    input { margin: .25rem .5rem .25rem .25rem; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>SlotKZ test client</h1>
+
+  <fieldset>
+    <legend>Auth</legend>
+    <label>Email <input id="email" value="test@slotkz.kz"></label>
+    <label>Password <input id="password" type="password" value="Passw0rd!"></label>
+    <button data-action="register">Register</button>
+    <button data-action="login">Login</button>
+    <button data-action="me">Me</button>
+    <button data-action="logout">Logout</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Salons</legend>
+    <label>City <input id="city" value="Алматы"></label>
+    <label>Category <input id="category" value="Барбершоп"></label>
+    <label>Name <input id="q"></label>
+    <button data-action="search">Search</button>
+    <button data-action="salon">Salon #1</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Bookings</legend>
+    <label>Master id <input id="masterId" type="number" value="1"></label>
+    <label>Hours ahead <input id="hoursAhead" type="number" value="25"></label>
+    <label>Booking id <input id="bookingId" type="number" value="1"></label>
+    <button data-action="create">Create</button>
+    <button data-action="list">List</button>
+    <button data-action="reschedule">Reschedule</button>
+    <button data-action="pay">Pay</button>
+    <button data-action="cancel">Cancel</button>
+  </fieldset>
+
+  <pre id="output">The response will appear here.</pre>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const output = el('output');
+
+    const startsAt = () => new Date(Date.now() + Number(el('hoursAhead').value) * 3_600_000).toISOString();
+    const credentials = () => ({ email: el('email').value, password: el('password').value });
+    const bookingUrl = () => `/api/bookings/${el('bookingId').value}`;
+
+    async function call(method, url, body) {
+      const response = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const text = await response.text();
+      const payload = text ? JSON.stringify(JSON.parse(text), null, 2) : '';
+      output.textContent = `${method} ${url}\n${response.status} ${response.statusText}\n\n${payload}`;
+    }
+
+    const actions = {
+      register: () => call('POST', '/api/auth/register', credentials()),
+      login: () => call('POST', '/api/auth/login', credentials()),
+      me: () => call('GET', '/api/auth/me'),
+      logout: () => call('POST', '/api/auth/logout'),
+      search: () => {
+        const params = new URLSearchParams();
+        for (const id of ['city', 'category', 'q']) if (el(id).value) params.set(id, el(id).value);
+        return call('GET', `/api/salons?${params}`);
+      },
+      salon: () => call('GET', '/api/salons/1'),
+      create: () => call('POST', '/api/bookings', { masterId: Number(el('masterId').value), startsAt: startsAt() }),
+      list: () => call('GET', '/api/bookings'),
+      reschedule: () => call('PUT', bookingUrl(), { startsAt: startsAt() }),
+      pay: () => call('POST', `${bookingUrl()}/pay`),
+      cancel: () => call('DELETE', bookingUrl()),
+    };
+
+    for (const button of document.querySelectorAll('[data-action]')) {
+      button.addEventListener('click', () => actions[button.dataset.action]());
+    }
+  </script>
+</body>
+</html>
