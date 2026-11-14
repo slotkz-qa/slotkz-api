@@ -24,6 +24,7 @@ export interface Booking {
 const MIN_LEAD_TIME_MS = 60 * 60 * 1000;
 const PREPAY_AMOUNT = 2000;
 const DB_LATENCY_MS = 50;
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 @Injectable()
 export class BookingsService {
@@ -33,25 +34,27 @@ export class BookingsService {
   constructor(private readonly salons: SalonsService) {}
 
   async create(userId: number, dto: CreateBookingDto) {
-    const master = this.salons.findMaster(dto.masterId);
-    const startsAt = this.parseSlot(dto.startsAt);
-    this.assertSlotFree(master.id, startsAt);
+  const master = this.salons.findMaster(dto.masterId);
+  const startsAt = this.parseSlot(dto.startsAt);
 
-    // simulated database latency
-    await delay(DB_LATENCY_MS);
+  // simulated database latency
+  await delay(DB_LATENCY_MS);
 
-    const booking: Booking = {
-      id: this.nextId++,
-      userId,
-      masterId: master.id,
-      startsAt,
-      status: 'CREATED',
-      prepayAmount: PREPAY_AMOUNT,
-      createdAt: new Date().toISOString(),
-    };
-    this.bookings.push(booking);
-    return booking;
-  }
+  // the check and the write run in one synchronous block, so no other request can slip in between
+  this.assertSlotFree(master.id, startsAt);
+
+  const booking: Booking = {
+    id: this.nextId++,
+    userId,
+    masterId: master.id,
+    startsAt,
+    status: 'CREATED',
+    prepayAmount: PREPAY_AMOUNT,
+    createdAt: new Date().toISOString(),
+  };
+  this.bookings.push(booking);
+  return booking;
+}
 
   list(userId: number) {
     return this.bookings.filter((booking) => booking.userId === userId);
@@ -92,7 +95,7 @@ export class BookingsService {
   }
 
   private refundPercent(booking: Booking) {
-    const hoursBeforeStart = (new Date(booking.startsAt).getTime() - Date.now()) / 60_000;
+    const hoursBeforeStart = (new Date(booking.startsAt).getTime() - Date.now()) / MS_PER_HOUR;
     return hoursBeforeStart >= 24 ? 100 : 0;
   }
 
