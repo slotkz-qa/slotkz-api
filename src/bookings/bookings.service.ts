@@ -22,6 +22,7 @@ export interface Booking {
 }
 
 const MIN_LEAD_TIME_MS = 60 * 60 * 1000;
+const MAX_ADVANCE_MS = 30 * 24 * 60 * 60 * 1000;
 const PREPAY_AMOUNT = 2000;
 const DB_LATENCY_MS = 50;
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -34,27 +35,27 @@ export class BookingsService {
   constructor(private readonly salons: SalonsService) {}
 
   async create(userId: number, dto: CreateBookingDto) {
-  const master = this.salons.findMaster(dto.masterId);
-  const startsAt = this.parseSlot(dto.startsAt);
+    const master = this.salons.findMaster(dto.masterId);
+    const startsAt = this.parseSlot(dto.startsAt);
 
-  // simulated database latency
-  await delay(DB_LATENCY_MS);
+    // simulated database latency
+    await delay(DB_LATENCY_MS);
 
-  // the check and the write run in one synchronous block, so no other request can slip in between
-  this.assertSlotFree(master.id, startsAt);
+    // the check and the write run in one synchronous block, so no other request can slip in between
+    this.assertSlotFree(master.id, startsAt);
 
-  const booking: Booking = {
-    id: this.nextId++,
-    userId,
-    masterId: master.id,
-    startsAt,
-    status: 'CREATED',
-    prepayAmount: PREPAY_AMOUNT,
-    createdAt: new Date().toISOString(),
-  };
-  this.bookings.push(booking);
-  return booking;
-}
+    const booking: Booking = {
+      id: this.nextId++,
+      userId,
+      masterId: master.id,
+      startsAt,
+      status: 'CREATED',
+      prepayAmount: PREPAY_AMOUNT,
+      createdAt: new Date().toISOString(),
+    };
+    this.bookings.push(booking);
+    return booking;
+  }
 
   list(userId: number) {
     return this.bookings.filter((booking) => booking.userId === userId);
@@ -101,8 +102,16 @@ export class BookingsService {
 
   private parseSlot(value: string) {
     const startsAt = new Date(value);
-    if (startsAt.getTime() - Date.now() < MIN_LEAD_TIME_MS) {
+    const msUntilStart = startsAt.getTime() - Date.now();
+
+    if (Number.isNaN(msUntilStart)) {
+      throw new UnprocessableEntityException('startsAt must be a valid ISO 8601 date');
+    }
+    if (msUntilStart < MIN_LEAD_TIME_MS) {
       throw new UnprocessableEntityException('Booking is possible no later than 60 minutes before the start');
+    }
+    if (msUntilStart > MAX_ADVANCE_MS) {
+      throw new UnprocessableEntityException('Booking is possible no earlier than 30 days before the start');
     }
     return startsAt.toISOString();
   }
